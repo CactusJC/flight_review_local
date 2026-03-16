@@ -28,16 +28,6 @@
 					</td>
 				</tr>
 				<tr>
-					<td class="left">E-Mail:</td>
-					<td>
-						<input class="form-control" type="text" name="email" id="email"/>
-					</td>
-				</tr>
-				<tr>
-					<td colspan="2"><small>Will only be used to send you a link to
-							the uploaded file (including a link to delete) and is not stored on the server.</small></td>
-				</tr>
-				<tr>
 					<td class="left">Access to the log:</td>
 					<td>
 						<select class="form-select w-100" name="type" id="access" onChange="updateAccess()">
@@ -73,10 +63,10 @@
 					</td>
 				</tr>
 				<tr>
-					<td class="left">ULog File:</td>
+					<td class="left">ULog File(s):</td>
 					<td>
 						<div class="input-group flex-row-reverse">
-							<input type="file" name="filearg" id="file" class="form-control">
+							<input type="file" name="filearg" id="file" class="form-control" multiple>
 						</div>
 					</td>
 				</tr>

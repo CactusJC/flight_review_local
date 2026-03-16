@@ -23,7 +23,6 @@ function saveSetting(key) {
 }
 
 function saveSettings() {
-	saveSetting('email');
 	saveSetting('access');
 }
 
@@ -47,13 +46,8 @@ function validateForm() {
         error_html += "Access, "
         valid = false;
     }
-    var email = document.getElementById('email').value;
-    if (!email.includes("@") || email.length < 5) { // very simple check
-        error_html += "E-Mail, "
-        valid = false;
-    }
-    if (document.getElementById('file').value.length == 0) {
-        error_html += "Log File, "
+    if (document.getElementById('file').files.length == 0) {
+        error_html += "Log File(s), "
         valid = false;
     }
 
@@ -72,7 +66,6 @@ function validateForm() {
 
 
 $(function() { // on startup
-	restoreSetting('email');
 	restoreSetting('access');
 	updateAccess();
 
@@ -107,15 +100,17 @@ $(function() { // on startup
                 // Handle the response from the server
                 console.log(data);
                 var json_response = JSON.parse(data);
-                window.location.href = json_response.url
+                // Always redirect to browse on success
+                window.location.href = '/browse';
             },
             error: function (data, textStatus) {
                 // Handle errors, if any
-                console.error('Error uploading file.');
+                console.error('Error uploading file(s).');
                 console.error(textStatus);
                 var progress_bar = $('.progress');
                 progress_bar.hide();
                 var upload_failure = $('#upload-failure');
+                upload_failure.html('<b>File upload failed. ' + (data.responseJSON && data.responseJSON.error ? data.responseJSON.error : '') + '</b>');
                 upload_failure.show();
             }
         });

@@ -6,7 +6,9 @@ ULog flight logs, and analyze them through the browser.
 It uses the [bokeh](http://bokeh.pydata.org) library for plotting and the
 [Tornado Web Server](http://www.tornadoweb.org).
 
-Flight Review is deployed at https://review.px4.io.
+This version is a **local-first, multi-upload optimized fork** of Flight Review. It removes email telemetry dependencies, enables batch upload capabilities via the Web UI, and automatically sets up its database upon the first run.
+
+Flight Review is originally deployed at https://review.px4.io.
 
 ![Plot View](screenshots/plot_view.png)
 
@@ -59,13 +61,11 @@ git submodule update --init --recursive
 
 ### Setup
 
-Initialize the Database as following:
+The database (`logs.sqlite`) is **auto-initialized** on the first run when starting the server. If you want to manually initialize or upgrade the database schema, run:
 
 ```bash
 ./app/setup_db.py
 ```
-
-**Note:** `setup_db.py` can also be used to upgrade the database tables, for instance when new entries are added (it automatically detects that).
 
 #### Settings
 
@@ -97,6 +97,8 @@ bokeh serve --show main.py`, to start without the html template).
 
 The whole web application is run with the `serve.py` script. Run `./serve.py -h`
 for further details.
+
+**New in this fork:** You can upload multiple log files at once directly through the Web UI on the `/upload` page! All external email notifications and SMTP configurations have been disabled to ensure a private, local-only analysis experience.
 
 To upload one or more logs from command line, use 
 [`PX4-Autopilot/Tools/upload_log.py`](https://github.com/PX4/PX4-Autopilot/blob/main/Tools/upload_log.py)
