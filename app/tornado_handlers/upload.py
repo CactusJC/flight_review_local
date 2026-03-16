@@ -157,7 +157,7 @@ class UploadHandler(TornadoRequestHandlerBase):
                 stored_email = ''
                 video_url = ''
                 is_public = 0
-                vehicle_name = ''
+                form_vehicle_name = ''
                 error_labels = ''
 
                 if upload_type == 'flightreport':
@@ -175,7 +175,7 @@ class UploadHandler(TornadoRequestHandlerBase):
                         if not validate_url(video_url):
                             video_url = ''
                     if 'vehicleName' in form_data:
-                        vehicle_name = escape(form_data['vehicleName'].decode("utf-8"))
+                        form_vehicle_name = escape(form_data['vehicleName'].decode("utf-8"))
 
                     # always allow for statistical analysis
                     allow_for_analysis = 1
@@ -184,9 +184,13 @@ class UploadHandler(TornadoRequestHandlerBase):
                             is_public = 1
 
                 file_objs = self.multipart_streamer.get_parts_by_name('filearg')
+                if not file_objs:
+                    raise CustomHTTPError(400, 'No files uploaded')
+
                 uploaded_urls = []
 
                 for file_obj in file_objs:
+                    vehicle_name = form_vehicle_name
                     upload_file_name = file_obj.get_filename()
 
                     # check if the file is encrypted
