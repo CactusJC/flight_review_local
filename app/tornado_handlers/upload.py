@@ -184,6 +184,7 @@ class UploadHandler(TornadoRequestHandlerBase):
                             is_public = 1
 
                 file_objs = self.multipart_streamer.get_parts_by_name('filearg')
+
                 if not file_objs:
                     raise CustomHTTPError(400, 'No files uploaded')
 
