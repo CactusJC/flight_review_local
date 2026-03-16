@@ -31,6 +31,8 @@ from tornado_handlers.error_labels import UpdateErrorLabelHandler
 from helper import set_log_id_is_filename, print_cache_info #pylint: disable=C0411
 from config import debug_print_timing, get_overview_img_filepath #pylint: disable=C0411
 
+import subprocess
+
 #pylint: disable=invalid-name
 
 def _fixup_deprecated_host_args(arguments):
@@ -110,6 +112,15 @@ if args.file is not None:
 
 set_log_id_is_filename(show_ulog_file)
 
+# auto-initialize database if it does not exist
+try:
+    from config import get_db_filename
+    db_filename = get_db_filename()
+    if not os.path.exists(db_filename):
+        print(f"Database {db_filename} not found, running setup_db.py to initialize...")
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.realpath(__file__)), 'setup_db.py')], check=True)
+except Exception as e:
+    print(f"Failed to auto-initialize database: {e}")
 
 # additional request handlers
 extra_patterns = [

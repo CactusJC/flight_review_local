@@ -122,12 +122,15 @@ class UploadHandler(TornadoRequestHandlerBase):
             try:
                 self.multipart_streamer.data_complete()
                 form_data = self.multipart_streamer.get_values(
-                    ['description', 'email',
+                    ['description',
                      'allowForAnalysis', 'obfuscated', 'source', 'type',
                      'feedback', 'windSpeed', 'rating', 'videoUrl', 'public',
                      'vehicleName', 'redirect'])
-                description = escape(form_data['description'].decode("utf-8"))
-                email = form_data['email'].decode("utf-8")
+                if 'description' in form_data:
+                    description = escape(form_data['description'].decode("utf-8"))
+                else:
+                    description = ''
+                email = "local@user.com"
                 upload_type = 'personal'
                 if 'type' in form_data:
                     upload_type = form_data['type'].decode("utf-8")
@@ -180,152 +183,145 @@ class UploadHandler(TornadoRequestHandlerBase):
                         if form_data['public'].decode("utf-8") == 'true':
                             is_public = 1
 
-                file_obj = self.multipart_streamer.get_parts_by_name('filearg')[0]
-                upload_file_name = file_obj.get_filename()
+                file_objs = self.multipart_streamer.get_parts_by_name('filearg')
+                uploaded_urls = []
 
-                # check if the file is encrypted
-                ulge_key_path = get_ulge_private_key_path()
-                if ulge_key_path and upload_file_name.lower().endswith('.ulge'):
-                    file_payload = file_obj.get_payload()  # full content as bytes
+                for file_obj in file_objs:
+                    upload_file_name = file_obj.get_filename()
+
+                    # check if the file is encrypted
+                    ulge_key_path = get_ulge_private_key_path()
+                    if ulge_key_path and upload_file_name.lower().endswith('.ulge'):
+                        file_payload = file_obj.get_payload()  # full content as bytes
+                        try:
+                            decrypted_data = decrypt_ulge_payload(
+                            file_payload,
+                            get_ulge_private_key_path()
+                        )
+
+                        except Exception as e:
+                            raise CustomHTTPError(400, f"Decryption failed: {str(e)}") from e
+
+                        if decrypted_data[:len(ULog.HEADER_BYTES)] != ULog.HEADER_BYTES:
+                            raise CustomHTTPError(400, "Decrypted file is not a valid ULog")
+
+                        # Write decrypted .ulg to disk
+                        log_id, new_file_name = self._generate_unique_log_filename()
+
+                        with open(new_file_name, 'wb') as output_file:
+                            output_file.write(decrypted_data)
+
+                        print(f"Decryption successful for {upload_file_name}, saved to {new_file_name}")
+
+                    else:
+                        # Regular .ulg file
+                        log_id, new_file_name = self._generate_unique_log_filename()
+
+                        header_len = len(ULog.HEADER_BYTES)
+                        if file_obj.get_payload_partial(header_len) != ULog.HEADER_BYTES:
+                            raise CustomHTTPError(400, 'Invalid File')
+
+                        print('Moving uploaded file to', new_file_name)
+                        file_obj.move(new_file_name)
+
+                    if obfuscated == 1:
+                        # TODO: randomize gps data, ...
+                        pass
+
+                    # generate a token: secure random string (url-safe)
+                    token = str(binascii.hexlify(os.urandom(16)), 'ascii')
+
+                    # Load the ulog file but only if not uploaded via CI.
+                    # Then we open the DB connection.
+                    ulog = None
+                    if source != 'CI':
+                        ulog_file_name = get_log_filename(log_id)
+                        ulog = load_ulog_file(ulog_file_name)
+
+                    # put additional data into a DB
+                    con = get_db_connection()
                     try:
-                        decrypted_data = decrypt_ulge_payload(
-                        file_payload,
-                        get_ulge_private_key_path()
-                    )
+                        cur = con.cursor()
+                        cur.execute(
+                            'insert into Logs (Id, Title, Description, '
+                            'OriginalFilename, Date, AllowForAnalysis, Obfuscated, '
+                            'Source, Email, WindSpeed, Rating, Feedback, Type, '
+                            'videoUrl, ErrorLabels, Public, Token) values '
+                            '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                            [log_id, title, description, upload_file_name,
+                             datetime.datetime.now(), allow_for_analysis,
+                             obfuscated, source, stored_email, wind_speed, rating,
+                             feedback, upload_type, video_url, error_labels, is_public, token])
 
-                    except Exception as e:
-                        raise CustomHTTPError(400, f"Decryption failed: {str(e)}") from e
+                        if ulog is not None:
+                            vehicle_data = update_vehicle_db_entry(cur, ulog, log_id, vehicle_name)
+                            vehicle_name = vehicle_data.name
 
-                    if decrypted_data[:len(ULog.HEADER_BYTES)] != ULog.HEADER_BYTES:
-                        raise CustomHTTPError(400, "Decrypted file is not a valid ULog")
+                        con.commit()
+                        cur.close()
+                    finally:
+                        con.close()
 
-                    # Write decrypted .ulg to disk
-                    log_id, new_file_name = self._generate_unique_log_filename()
+                    url = '/plot_app?log='+log_id
+                    full_plot_url = get_http_protocol()+'://'+get_domain_name()+url
+                    print(full_plot_url)
 
-                    with open(new_file_name, 'wb') as output_file:
-                        output_file.write(decrypted_data)
+                    delete_url = get_http_protocol()+'://'+get_domain_name()+ \
+                        '/edit_entry?action=delete&log='+log_id+'&token='+token
 
-                    print(f"Decryption successful for {upload_file_name}, saved to {new_file_name}")
-
-                else:
-                    # Regular .ulg file
-                    log_id, new_file_name = self._generate_unique_log_filename()
-
-                    header_len = len(ULog.HEADER_BYTES)
-                    if file_obj.get_payload_partial(header_len) != ULog.HEADER_BYTES:
-                        raise CustomHTTPError(400, 'Invalid File')
-
-                    print('Moving uploaded file to', new_file_name)
-                    file_obj.move(new_file_name)
-
-                if obfuscated == 1:
-                    # TODO: randomize gps data, ...
-                    pass
-
-                # generate a token: secure random string (url-safe)
-                token = str(binascii.hexlify(os.urandom(16)), 'ascii')
-
-                # Load the ulog file but only if not uploaded via CI.
-                # Then we open the DB connection.
-                ulog = None
-                if source != 'CI':
-                    ulog_file_name = get_log_filename(log_id)
-                    ulog = load_ulog_file(ulog_file_name)
-
-                # put additional data into a DB
-                con = get_db_connection()
-                try:
-                    cur = con.cursor()
-                    cur.execute(
-                        'insert into Logs (Id, Title, Description, '
-                        'OriginalFilename, Date, AllowForAnalysis, Obfuscated, '
-                        'Source, Email, WindSpeed, Rating, Feedback, Type, '
-                        'videoUrl, ErrorLabels, Public, Token) values '
-                        '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                        [log_id, title, description, upload_file_name,
-                         datetime.datetime.now(), allow_for_analysis,
-                         obfuscated, source, stored_email, wind_speed, rating,
-                         feedback, upload_type, video_url, error_labels, is_public, token])
+                    # information for the notification email
+                    info = {}
+                    info['description'] = description
+                    info['feedback'] = feedback
+                    info['upload_filename'] = upload_file_name
+                    info['type'] = ''
+                    info['airframe'] = ''
+                    info['hardware'] = ''
+                    info['uuid'] = ''
+                    info['software'] = ''
+                    info['rating'] = rating
+                    if len(vehicle_name) > 0:
+                        info['vehicle_name'] = vehicle_name
 
                     if ulog is not None:
-                        vehicle_data = update_vehicle_db_entry(cur, ulog, log_id, vehicle_name)
-                        vehicle_name = vehicle_data.name
-
-                    con.commit()
-                    cur.close()
-                finally:
-                    con.close()
-
-                url = '/plot_app?log='+log_id
-                full_plot_url = get_http_protocol()+'://'+get_domain_name()+url
-                print(full_plot_url)
-
-                delete_url = get_http_protocol()+'://'+get_domain_name()+ \
-                    '/edit_entry?action=delete&log='+log_id+'&token='+token
-
-                # information for the notification email
-                info = {}
-                info['description'] = description
-                info['feedback'] = feedback
-                info['upload_filename'] = upload_file_name
-                info['type'] = ''
-                info['airframe'] = ''
-                info['hardware'] = ''
-                info['uuid'] = ''
-                info['software'] = ''
-                info['rating'] = rating
-                if len(vehicle_name) > 0:
-                    info['vehicle_name'] = vehicle_name
-
-                if ulog is not None:
-                    px4_ulog = PX4ULog(ulog)
-                    info['type'] = px4_ulog.get_mav_type()
-                    airframe_name_tuple = get_airframe_name(ulog)
-                    if airframe_name_tuple is not None:
-                        airframe_name, airframe_id = airframe_name_tuple
-                        if len(airframe_name) == 0:
-                            info['airframe'] = airframe_id
-                        else:
-                            info['airframe'] = airframe_name
-                    sys_hardware = ''
-                    if 'ver_hw' in ulog.msg_info_dict:
-                        sys_hardware = escape(ulog.msg_info_dict['ver_hw'])
-                        info['hardware'] = sys_hardware
-                    if 'sys_uuid' in ulog.msg_info_dict and sys_hardware != 'SITL':
-                        info['uuid'] = escape(ulog.msg_info_dict['sys_uuid'])
-                    branch_info = ''
-                    if 'ver_sw_branch' in ulog.msg_info_dict:
-                        branch_info = ' (branch: '+ulog.msg_info_dict['ver_sw_branch']+')'
-                    if 'ver_sw' in ulog.msg_info_dict:
-                        ver_sw = escape(ulog.msg_info_dict['ver_sw'])
-                        info['software'] = ver_sw + branch_info
+                        px4_ulog = PX4ULog(ulog)
+                        info['type'] = px4_ulog.get_mav_type()
+                        airframe_name_tuple = get_airframe_name(ulog)
+                        if airframe_name_tuple is not None:
+                            airframe_name, airframe_id = airframe_name_tuple
+                            if len(airframe_name) == 0:
+                                info['airframe'] = airframe_id
+                            else:
+                                info['airframe'] = airframe_name
+                        sys_hardware = ''
+                        if 'ver_hw' in ulog.msg_info_dict:
+                            sys_hardware = escape(ulog.msg_info_dict['ver_hw'])
+                            info['hardware'] = sys_hardware
+                        if 'sys_uuid' in ulog.msg_info_dict and sys_hardware != 'SITL':
+                            info['uuid'] = escape(ulog.msg_info_dict['sys_uuid'])
+                        branch_info = ''
+                        if 'ver_sw_branch' in ulog.msg_info_dict:
+                            branch_info = ' (branch: '+ulog.msg_info_dict['ver_sw_branch']+')'
+                        if 'ver_sw' in ulog.msg_info_dict:
+                            ver_sw = escape(ulog.msg_info_dict['ver_sw'])
+                            info['software'] = ver_sw + branch_info
 
 
-                if upload_type == 'flightreport' and is_public and source != 'CI':
-                    destinations = set(email_notifications_config['public_flightreport'])
-                    if rating in ['unsatisfactory', 'crash_sw_hw', 'crash_pilot']:
-                        destinations = destinations | \
-                            set(email_notifications_config['public_flightreport_bad'])
-                    send_flightreport_email(
-                        list(destinations),
-                        full_plot_url,
-                        DBData.rating_str_static(rating),
-                        DBData.wind_speed_str_static(wind_speed), delete_url,
-                        email, info)
+                    if upload_type == 'flightreport' and is_public and source != 'CI':
+                        # generate the additional DB entry (opens its own connection)
+                        generate_db_data_from_log_file(log_id)
+                        # also generate the preview image
+                        IOLoop.instance().add_callback(generate_overview_img_from_id, log_id)
 
-                    # generate the additional DB entry (opens its own connection)
-                    generate_db_data_from_log_file(log_id)
-                    # also generate the preview image
-                    IOLoop.instance().add_callback(generate_overview_img_from_id, log_id)
-
-                # send notification emails
-                send_notification_email(email, full_plot_url, delete_url, info)
+                    # Emails deactivated for local multi-upload fork.
+                    # send_notification_email(email, full_plot_url, delete_url, info)
+                    uploaded_urls.append(url)
 
                 if should_redirect:
-                    self.redirect(url)
+                    self.redirect('/browse')
                 else:
-                    # Return plot url as json
-                    self.write(json.dumps({"url": url}))
+                    # Return plot urls as json
+                    self.write(json.dumps({"urls": uploaded_urls}))
 
             except CustomHTTPError:
                 raise
