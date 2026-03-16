@@ -46,6 +46,27 @@ Use [Homebrew](https://brew.sh) to install fftw:
 brew install fftw
 ```
 
+#### Windows
+
+SQLite3 is bundled with Python on Windows. However, you will need to install the dependencies using `pip`. Ensure you have Python 3 (3.6+) installed and added to your system `PATH`.
+
+1. Clone the repository and navigate into the `app` directory:
+   ```cmd
+   git clone --recursive https://github.com/PX4/flight_review.git
+   cd flight_review\app
+   ```
+2. Create and activate a virtual environment (optional but recommended):
+   ```cmd
+   python -m venv venv
+   .\venv\Scripts\activate
+   ```
+3. Install the dependencies:
+   ```cmd
+   pip install -r requirements.txt
+   ```
+
+*Note: The `pyfftw` library can sometimes be tricky to install on Windows. If you encounter errors, consider installing a pre-compiled wheel from [Christoph Gohlke's repository](https://www.lfd.uci.edu/~gohlke/pythonlibs/) or using Anaconda.*
+
 ### Installation
 
 ```bash
@@ -95,10 +116,9 @@ The `plot_app` directory contains a bokeh server application for plotting. It
 can be run stand-alone with `bokeh serve --show plot_app` (or with `cd plot_app;
 bokeh serve --show main.py`, to start without the html template).
 
-The whole web application is run with the `serve.py` script. Run `./serve.py -h`
-for further details.
+The whole web application is run with the `serve.py` script. Run `./serve.py -h` (or `python serve.py -h` on Windows) for further details.
 
-**New in this fork:** You can upload multiple log files at once directly through the Web UI on the `/upload` page! All external email notifications and SMTP configurations have been disabled to ensure a private, local-only analysis experience.
+**New in this fork:** You can upload multiple log files at once directly through the Web UI on the `/upload` page! All external email notifications and SMTP configurations have been disabled in `config_default.ini` to ensure a private, local-only analysis experience.
 
 To upload one or more logs from command line, use 
 [`PX4-Autopilot/Tools/upload_log.py`](https://github.com/PX4/PX4-Autopilot/blob/main/Tools/upload_log.py)
